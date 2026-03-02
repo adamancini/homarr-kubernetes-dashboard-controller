@@ -59,8 +59,8 @@ type BoardItem struct {
 	Width           int             `json:"width"`
 	Height          int             `json:"height"`
 	Options         json.RawMessage `json:"options,omitempty"`
-	Layouts         []ItemLayout    `json:"layouts,omitempty"`
-	IntegrationIDs  []string        `json:"integrationIds,omitempty"`
+	Layouts         []ItemLayout    `json:"layouts"`
+	IntegrationIDs  []string        `json:"integrationIds"`
 	AdvancedOptions json.RawMessage `json:"advancedOptions,omitempty"`
 }
 
