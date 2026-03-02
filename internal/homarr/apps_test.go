@@ -12,7 +12,7 @@ import (
 
 func TestListApps(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/trpc/app.getAll" || r.Method != http.MethodGet {
+		if r.URL.Path != "/api/trpc/app.all" || r.Method != http.MethodGet {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		if r.Header.Get("ApiKey") != "test-key" {

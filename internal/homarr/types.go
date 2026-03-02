@@ -46,12 +46,18 @@ type Section struct {
 	ID      string          `json:"id"`
 	Kind    string          `json:"kind"`
 	Name    string          `json:"name,omitempty"`
+	XOffset int             `json:"xOffset"`
+	YOffset int             `json:"yOffset"`
 	Options json.RawMessage `json:"options,omitempty"`
 }
 
 type BoardItem struct {
 	ID              string          `json:"id"`
 	Kind            string          `json:"kind"`
+	XOffset         int             `json:"xOffset"`
+	YOffset         int             `json:"yOffset"`
+	Width           int             `json:"width"`
+	Height          int             `json:"height"`
 	Options         json.RawMessage `json:"options,omitempty"`
 	Layouts         []ItemLayout    `json:"layouts,omitempty"`
 	IntegrationIDs  []string        `json:"integrationIds,omitempty"`

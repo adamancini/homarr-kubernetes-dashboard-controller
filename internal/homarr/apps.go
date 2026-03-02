@@ -6,7 +6,7 @@ import (
 
 func (c *Client) ListApps(ctx context.Context) ([]App, error) {
 	var apps []App
-	if err := c.trpcQuery(ctx, "app.getAll", nil, &apps); err != nil {
+	if err := c.trpcQuery(ctx, "app.all", nil, &apps); err != nil {
 		return nil, err
 	}
 	return apps, nil
