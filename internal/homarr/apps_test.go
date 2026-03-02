@@ -12,15 +12,22 @@ import (
 
 func TestListApps(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/apps" || r.Method != http.MethodGet {
+		if r.URL.Path != "/api/trpc/app.getAll" || r.Method != http.MethodGet {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		if r.Header.Get("ApiKey") != "test-key" {
 			t.Errorf("missing ApiKey header")
 		}
-		json.NewEncoder(w).Encode([]homarr.App{
-			{ID: "abc", Name: "Sonarr", IconURL: "sonarr.svg", Href: "https://sonarr.example.com"},
-		})
+		resp := map[string]any{
+			"result": map[string]any{
+				"data": map[string]any{
+					"json": []any{
+						map[string]any{"id": "abc", "name": "Sonarr", "iconUrl": "sonarr.svg", "href": "https://sonarr.example.com"},
+					},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -36,16 +43,24 @@ func TestListApps(t *testing.T) {
 
 func TestCreateApp(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST, got %s", r.Method)
+		if r.Method != http.MethodPost || r.URL.Path != "/api/trpc/app.create" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
-		var body homarr.AppCreate
+		var body struct {
+			JSON homarr.AppCreate `json:"json"`
+		}
 		json.NewDecoder(r.Body).Decode(&body)
-		if body.Name != "Sonarr" {
-			t.Errorf("unexpected name: %s", body.Name)
+		if body.JSON.Name != "Sonarr" {
+			t.Errorf("unexpected name: %s", body.JSON.Name)
 		}
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(homarr.App{ID: "new-id", Name: body.Name, IconURL: body.IconURL, Href: body.Href})
+		resp := map[string]any{
+			"result": map[string]any{
+				"data": map[string]any{
+					"json": map[string]any{"id": "new-id", "name": body.JSON.Name, "iconUrl": body.JSON.IconURL, "href": body.JSON.Href},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -65,10 +80,18 @@ func TestCreateApp(t *testing.T) {
 
 func TestDeleteApp(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete || r.URL.Path != "/api/apps/abc" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/trpc/app.delete" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
-		w.WriteHeader(http.StatusNoContent)
+		// tRPC mutation with no result
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{
+			"result": map[string]any{
+				"data": map[string]any{
+					"json": nil,
+				},
+			},
+		})
 	}))
 	defer srv.Close()
 

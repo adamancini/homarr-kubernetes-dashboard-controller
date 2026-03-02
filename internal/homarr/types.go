@@ -7,24 +7,24 @@ type App struct {
 	Name        string `json:"name"`
 	IconURL     string `json:"iconUrl"`
 	Href        string `json:"href"`
-	Description string `json:"description,omitempty"`
-	PingURL     string `json:"pingUrl,omitempty"`
+	Description string `json:"description"`
+	PingURL     string `json:"pingUrl"`
 }
 
 type AppCreate struct {
 	Name        string `json:"name"`
 	IconURL     string `json:"iconUrl"`
 	Href        string `json:"href"`
-	Description string `json:"description,omitempty"`
-	PingURL     string `json:"pingUrl,omitempty"`
+	Description string `json:"description"`
+	PingURL     string `json:"pingUrl"`
 }
 
 type AppUpdate struct {
 	Name        string `json:"name"`
 	IconURL     string `json:"iconUrl"`
 	Href        string `json:"href"`
-	Description string `json:"description,omitempty"`
-	PingURL     string `json:"pingUrl,omitempty"`
+	Description string `json:"description"`
+	PingURL     string `json:"pingUrl"`
 }
 
 type Board struct {

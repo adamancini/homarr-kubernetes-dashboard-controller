@@ -6,7 +6,7 @@ import (
 
 func (c *Client) ListApps(ctx context.Context) ([]App, error) {
 	var apps []App
-	if err := c.do(ctx, "GET", "/api/apps", nil, &apps); err != nil {
+	if err := c.trpcQuery(ctx, "app.getAll", nil, &apps); err != nil {
 		return nil, err
 	}
 	return apps, nil
@@ -14,16 +14,16 @@ func (c *Client) ListApps(ctx context.Context) ([]App, error) {
 
 func (c *Client) CreateApp(ctx context.Context, app AppCreate) (App, error) {
 	var created App
-	if err := c.do(ctx, "POST", "/api/apps", app, &created); err != nil {
+	if err := c.trpcMutation(ctx, "app.create", app, &created); err != nil {
 		return App{}, err
 	}
 	return created, nil
 }
 
 func (c *Client) UpdateApp(ctx context.Context, id string, app AppUpdate) error {
-	return c.do(ctx, "PATCH", "/api/apps/"+id, app, nil)
+	return c.trpcMutation(ctx, "app.edit", app, nil)
 }
 
 func (c *Client) DeleteApp(ctx context.Context, id string) error {
-	return c.do(ctx, "DELETE", "/api/apps/"+id, nil, nil)
+	return c.trpcMutation(ctx, "app.delete", map[string]string{"id": id}, nil)
 }
