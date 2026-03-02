@@ -1,0 +1,62 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/adamancini/homarr-kubernetes-dashboard-controller
+  tag: ""  # defaults to appVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Homarr connection
+homarr:
+  url: "http://homarr.homarr.svc:7575"
+  apiKeySecret:
+    name: homarr-api-key
+    key: api-key
+  # Use an existing secret instead of creating one
+  existingSecret: ""
+
+# Sources to watch
+sources:
+  - ingress
+
+# Board configuration
+board:
+  name: default
+  columnCount: 12
+
+# Annotation prefix
+annotationPrefix: "homarr.dev"
+
+# Icon CDN base URL
+defaultIconBaseURL: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/svg"
+
+# Namespace scoping
+namespaces:
+  allNamespaces: false
+  watch: []
+  ignore:
+    - kube-system
+    - flux-system
+
+# Controller behavior
+reconcileInterval: 5m
+leaderElect: true
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+resources:
+  limits:
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

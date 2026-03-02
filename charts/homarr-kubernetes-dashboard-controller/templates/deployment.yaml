@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "homarr-dashboard-controller.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "homarr-dashboard-controller.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "homarr-dashboard-controller.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "homarr-dashboard-controller.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "homarr-dashboard-controller.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- range .Values.sources }}
+            - --source={{ . }}
+            {{- end }}
+            - --homarr-url={{ .Values.homarr.url }}
+            - --board-name={{ .Values.board.name }}
+            - --board-column-count={{ .Values.board.columnCount }}
+            - --annotation-prefix={{ .Values.annotationPrefix }}
+            - --default-icon-base-url={{ .Values.defaultIconBaseURL }}
+            - --reconcile-interval={{ .Values.reconcileInterval }}
+            {{- if .Values.leaderElect }}
+            - --leader-elect=true
+            {{- else }}
+            - --leader-elect=false
+            {{- end }}
+            {{- if .Values.namespaces.allNamespaces }}
+            - --all-namespaces
+            {{- else }}
+            {{- range .Values.namespaces.watch }}
+            - --namespace={{ . }}
+            {{- end }}
+            {{- end }}
+            {{- range .Values.namespaces.ignore }}
+            - --ignore-namespace={{ . }}
+            {{- end }}
+          env:
+            - name: HOMARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.homarr.existingSecret | default .Values.homarr.apiKeySecret.name }}
+                  key: {{ .Values.homarr.apiKeySecret.key }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

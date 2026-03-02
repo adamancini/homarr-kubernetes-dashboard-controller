@@ -1,0 +1,6 @@
+apiVersion: v2
+name: homarr-kubernetes-dashboard-controller
+description: Kubernetes controller that syncs annotated resources to a Homarr dashboard
+version: 0.1.0
+appVersion: 0.1.0
+type: application
