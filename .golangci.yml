@@ -9,3 +9,18 @@ linters:
     - typecheck
     - gofmt
     - goimports
+
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - encoding/json.(*Encoder).Encode
+      - encoding/json.(*Decoder).Decode
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+
+run:
+  timeout: 5m
