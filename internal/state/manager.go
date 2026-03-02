@@ -27,12 +27,14 @@ func NewInMemoryState() *InMemoryState {
 	}
 }
 
-func (s *InMemoryState) SetApp(homarrID, sourceID string)            { s.apps[homarrID] = sourceID }
-func (s *InMemoryState) SetIntegration(homarrID, sourceID string)     { s.integrations[homarrID] = sourceID }
-func (s *InMemoryState) RemoveApp(homarrID string)                    { delete(s.apps, homarrID) }
-func (s *InMemoryState) RemoveIntegration(homarrID string)            { delete(s.integrations, homarrID) }
-func (s *InMemoryState) GetAppSource(homarrID string) string          { return s.apps[homarrID] }
-func (s *InMemoryState) GetIntegrationSource(homarrID string) string  { return s.integrations[homarrID] }
+func (s *InMemoryState) SetApp(homarrID, sourceID string) { s.apps[homarrID] = sourceID }
+func (s *InMemoryState) SetIntegration(homarrID, sourceID string) {
+	s.integrations[homarrID] = sourceID
+}
+func (s *InMemoryState) RemoveApp(homarrID string)                   { delete(s.apps, homarrID) }
+func (s *InMemoryState) RemoveIntegration(homarrID string)           { delete(s.integrations, homarrID) }
+func (s *InMemoryState) GetAppSource(homarrID string) string         { return s.apps[homarrID] }
+func (s *InMemoryState) GetIntegrationSource(homarrID string) string { return s.integrations[homarrID] }
 
 func (s *InMemoryState) FindAppBySource(sourceID string) (string, bool) {
 	for homarrID, src := range s.apps {

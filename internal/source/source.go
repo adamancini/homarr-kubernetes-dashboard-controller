@@ -22,9 +22,9 @@ type DashboardEntry struct {
 	Priority int
 
 	// Integration
-	IntegrationType    string
-	IntegrationURL     string
-	IntegrationSecret  string
+	IntegrationType      string
+	IntegrationURL       string
+	IntegrationSecret    string
 	IntegrationSecretKey string
 
 	// Widget
