@@ -88,6 +88,9 @@ func (c *Client) trpcMutation(ctx context.Context, procedure string, input any, 
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusNotFound {
+			return &NotFoundError{Procedure: procedure}
+		}
 		return fmt.Errorf("tRPC %s returned %d: %s", procedure, resp.StatusCode, string(respBody))
 	}
 
@@ -136,6 +139,9 @@ func (c *Client) trpcQuery(ctx context.Context, procedure string, input any, res
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusNotFound {
+			return &NotFoundError{Procedure: procedure}
+		}
 		return fmt.Errorf("tRPC query %s returned %d: %s", procedure, resp.StatusCode, string(respBody))
 	}
 
