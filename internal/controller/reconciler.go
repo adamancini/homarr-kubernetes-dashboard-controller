@@ -63,12 +63,11 @@ func (r *Reconciler) Reconcile(ctx context.Context) (ReconcileResult, error) {
 	if err != nil {
 		if homarr.IsNotFound(err) {
 			slog.Info("creating board", "name", r.boardName)
-			board, err = r.client.CreateBoard(ctx, homarr.BoardCreate{
+			if _, err = r.client.CreateBoard(ctx, homarr.BoardCreate{
 				Name:        r.boardName,
 				ColumnCount: r.boardColumns,
 				IsPublic:    false,
-			})
-			if err != nil {
+			}); err != nil {
 				return result, fmt.Errorf("create board: %w", err)
 			}
 			// Re-fetch to get sections and layouts

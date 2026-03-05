@@ -104,7 +104,7 @@ func TestSaveBoard_PreservesSectionFields(t *testing.T) {
 									"id": "s3", "kind": "dynamic", "name": "Dynamic",
 									"xOffset": 0, "yOffset": 2,
 									"options": map[string]any{"css": ""},
-									"layouts":  []any{map[string]any{"id": "l1", "columnCount": 12, "breakpoint": 0}},
+									"layouts": []any{map[string]any{"id": "l1", "columnCount": 12, "breakpoint": 0}},
 								},
 							},
 							"items":   []any{},

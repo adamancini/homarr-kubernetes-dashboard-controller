@@ -27,44 +27,6 @@ func NewClient(baseURL, apiKey string) *Client {
 	}
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body any, result any) error {
-	var bodyReader io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
-		}
-		bodyReader = bytes.NewReader(b)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("ApiKey", c.apiKey)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request %s %s: %w", method, path, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("%s %s returned %d: %s", method, path, resp.StatusCode, string(respBody))
-	}
-
-	if result != nil {
-		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-			return fmt.Errorf("decode response: %w", err)
-		}
-	}
-	return nil
-}
-
 // trpcMutation calls a tRPC mutation: POST /api/trpc/<procedure> with {"json": input}
 func (c *Client) trpcMutation(ctx context.Context, procedure string, input any, result any) error {
 	body := map[string]any{"json": input}
