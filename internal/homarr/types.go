@@ -43,12 +43,14 @@ type BoardCreate struct {
 }
 
 type Section struct {
-	ID      string          `json:"id"`
-	Kind    string          `json:"kind"`
-	Name    string          `json:"name,omitempty"`
-	XOffset int             `json:"xOffset"`
-	YOffset int             `json:"yOffset"`
-	Options json.RawMessage `json:"options,omitempty"`
+	ID        string          `json:"id"`
+	Kind      string          `json:"kind"`
+	Name      string          `json:"name,omitempty"`
+	XOffset   int             `json:"xOffset"`
+	YOffset   int             `json:"yOffset"`
+	Collapsed *bool           `json:"collapsed,omitempty"`
+	Options   json.RawMessage `json:"options,omitempty"`
+	Layouts   json.RawMessage `json:"layouts,omitempty"`
 }
 
 type BoardItem struct {
