@@ -23,7 +23,7 @@ func TestServiceSource_List(t *testing.T) {
 				"homarr.dev/enabled": "true",
 				"homarr.dev/name":    "Sonarr",
 				"homarr.dev/icon":    "sonarr",
-				"homarr.dev/group":   "Media",
+				"homarr.dev/category": "Services",
 				"homarr.dev/url":     "https://sonarr.example.com",
 			},
 		},

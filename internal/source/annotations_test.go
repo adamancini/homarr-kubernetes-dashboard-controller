@@ -11,7 +11,7 @@ func TestParseAnnotations(t *testing.T) {
 		"homarr.dev/enabled":                "true",
 		"homarr.dev/name":                   "Sonarr",
 		"homarr.dev/icon":                   "sonarr",
-		"homarr.dev/group":                  "Media",
+		"homarr.dev/category":               "Services",
 		"homarr.dev/description":            "TV show manager",
 		"homarr.dev/priority":               "10",
 		"homarr.dev/ping-url":               "http://sonarr:8989/ping",
@@ -31,8 +31,8 @@ func TestParseAnnotations(t *testing.T) {
 	if entry.IconURL != "sonarr" {
 		t.Errorf("IconURL = %q, want sonarr", entry.IconURL)
 	}
-	if entry.Group != "Media" {
-		t.Errorf("Group = %q, want Media", entry.Group)
+	if entry.Category != "Services" {
+		t.Errorf("Category = %q, want Services", entry.Category)
 	}
 	if entry.Description != "TV show manager" {
 		t.Errorf("Description = %q", entry.Description)
@@ -60,6 +60,33 @@ func TestParseAnnotations(t *testing.T) {
 	}
 	if entry.URL != "https://sonarr.example.com" {
 		t.Errorf("URL = %q", entry.URL)
+	}
+}
+
+func TestParseAnnotations_GroupFallback(t *testing.T) {
+	// Legacy "group" annotation should still work as fallback
+	annotations := map[string]string{
+		"homarr.dev/enabled": "true",
+		"homarr.dev/name":    "Legacy",
+		"homarr.dev/group":   "OldGroup",
+	}
+	entry := source.ParseAnnotations(annotations, "homarr.dev")
+	if entry.Category != "OldGroup" {
+		t.Errorf("Category = %q, want OldGroup (from group fallback)", entry.Category)
+	}
+}
+
+func TestParseAnnotations_CategoryOverridesGroup(t *testing.T) {
+	// When both are set, category takes precedence
+	annotations := map[string]string{
+		"homarr.dev/enabled":  "true",
+		"homarr.dev/name":     "Both",
+		"homarr.dev/category": "NewCategory",
+		"homarr.dev/group":    "OldGroup",
+	}
+	entry := source.ParseAnnotations(annotations, "homarr.dev")
+	if entry.Category != "NewCategory" {
+		t.Errorf("Category = %q, want NewCategory (category should override group)", entry.Category)
 	}
 }
 

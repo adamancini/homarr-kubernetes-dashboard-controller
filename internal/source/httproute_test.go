@@ -28,7 +28,7 @@ func TestHTTPRouteSource_List(t *testing.T) {
 		"homarr.dev/enabled": "true",
 		"homarr.dev/name":    "Grafana",
 		"homarr.dev/icon":    "grafana",
-		"homarr.dev/group":   "Observability",
+		"homarr.dev/category": "Infra",
 	})
 	route.Object["spec"] = map[string]any{
 		"hostnames": []any{"grafana.example.com"},

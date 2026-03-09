@@ -23,7 +23,7 @@ func TestIngressSource_List(t *testing.T) {
 				"homarr.dev/enabled": "true",
 				"homarr.dev/name":    "Sonarr",
 				"homarr.dev/icon":    "sonarr",
-				"homarr.dev/group":   "Media",
+				"homarr.dev/category": "Services",
 			},
 		},
 		Spec: networkingv1.IngressSpec{
@@ -65,8 +65,8 @@ func TestIngressSource_List(t *testing.T) {
 	if e.URL != "https://sonarr.example.com" {
 		t.Errorf("URL = %q, want https://sonarr.example.com", e.URL)
 	}
-	if e.Group != "Media" {
-		t.Errorf("Group = %q", e.Group)
+	if e.Category != "Services" {
+		t.Errorf("Category = %q", e.Category)
 	}
 }
 

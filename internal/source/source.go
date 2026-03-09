@@ -18,7 +18,7 @@ type DashboardEntry struct {
 	PingURL     string
 
 	// Organization
-	Group    string
+	Category string
 	Priority int
 
 	// Integration

@@ -51,8 +51,8 @@ func (s *HTTPRouteSource) List(ctx context.Context) ([]DashboardEntry, error) {
 			if entry.Name == "" {
 				entry.Name = cases.Title(language.English).String(obj.GetName())
 			}
-			if entry.Group == "" {
-				entry.Group = obj.GetNamespace()
+			if entry.Category == "" {
+				entry.Category = obj.GetNamespace()
 			}
 			if entry.URL == "" {
 				entry.URL = inferHTTPRouteURL(obj.Object)

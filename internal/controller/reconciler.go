@@ -276,26 +276,85 @@ func (r *Reconciler) readIntegrationSecrets(ctx context.Context, entry source.Da
 	return secrets, nil
 }
 
-// placeAppsOnBoard ensures all managed apps are placed as items on the board,
-// with integration IDs linked where available. All managed items are rebuilt
-// from scratch each reconcile to ensure correct positioning.
+// placeAppsOnBoard ensures all managed apps are placed as items on the board
+// in the correct category section, with integration IDs linked where available.
+// Apps whose category annotation changed are moved to the correct section.
 func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board, desired map[string]source.DashboardEntry) error {
 	if len(board.Layouts) == 0 || len(board.Sections) == 0 {
 		return fmt.Errorf("board %q has no layouts or sections", board.Name)
 	}
 
 	layoutID := board.Layouts[0].ID
-	sectionID := board.Sections[0].ID
 
 	colCount := r.boardColumns
 	if colCount <= 0 {
 		colCount = 12
 	}
 
-	// Keep only non-managed items and track which apps are already on the board
+	sections := make([]homarr.Section, len(board.Sections))
+	copy(sections, board.Sections)
+
+	// Build section lookup: category name -> section ID of the empty section
+	// that follows the category header. In Homarr, a "category" section is a
+	// header; items go in the next "empty" section that follows it.
+	categorySectionID := r.buildCategorySectionMap(sections)
+
+	// Build reverse lookup: appID -> sourceID for category resolution
+	appCategory := make(map[string]string) // appID -> desired category
+	for _, appID := range r.state.ManagedAppIDs() {
+		sourceID := r.state.GetAppSource(appID)
+		if entry, ok := desired[sourceID]; ok {
+			appCategory[appID] = entry.Category
+		}
+	}
+
+	// Collect categories that don't have sections yet
+	newCategories := make(map[string]bool)
+	for _, cat := range appCategory {
+		if cat == "" {
+			continue
+		}
+		if _, exists := categorySectionID[cat]; !exists {
+			newCategories[cat] = true
+		}
+	}
+
+	// Create missing category sections (header + empty content section)
+	if len(newCategories) > 0 {
+		maxY := 0
+		for _, s := range sections {
+			if s.YOffset > maxY {
+				maxY = s.YOffset
+			}
+		}
+		for cat := range newCategories {
+			maxY++
+			catSection := homarr.Section{
+				ID:      generateSectionID("cat", cat),
+				Kind:    "category",
+				Name:    cat,
+				XOffset: 0,
+				YOffset: maxY,
+			}
+			maxY++
+			emptySection := homarr.Section{
+				ID:      generateSectionID("sec", cat),
+				Kind:    "empty",
+				XOffset: 0,
+				YOffset: maxY,
+			}
+			sections = append(sections, catSection, emptySection)
+			categorySectionID[cat] = emptySection.ID
+			slog.Info("created category section", "category", cat)
+		}
+	}
+
+	// Determine the default section (first "empty" section) for uncategorized apps
+	defaultSectionID := board.Sections[0].ID
+
+	// Keep only non-managed items and track which non-managed apps are on the board
 	onBoard := make(map[string]bool)
 	var items []homarr.BoardItem
-	col, row := 0, 0
 	for _, item := range board.Items {
 		if item.Kind == "app" && strings.HasPrefix(item.ID, "managed-") {
 			continue // drop all managed items — we rebuild them below
@@ -306,22 +365,30 @@ func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board, d
 				onBoard[id] = true
 			}
 		}
-		// Track the grid position after non-managed items
-		for _, l := range item.Layouts {
-			if l.YOffset > row || (l.YOffset == row && l.XOffset+l.Width > col) {
-				row = l.YOffset
-				col = l.XOffset + l.Width
-			}
-		}
-	}
-	if col >= colCount {
-		col = 0
-		row++
 	}
 
 	baseLen := len(items)
 
-	// Add items for all managed apps not already covered by non-managed items
+	// Track per-section grid cursors for layout positioning
+	type cursor struct{ col, row int }
+	cursors := make(map[string]*cursor)
+	// Seed cursors from existing non-managed items in each section
+	for _, item := range items {
+		for _, l := range item.Layouts {
+			c, ok := cursors[l.SectionID]
+			if !ok {
+				c = &cursor{}
+				cursors[l.SectionID] = c
+			}
+			endCol := l.XOffset + l.Width
+			if l.YOffset > c.row || (l.YOffset == c.row && endCol > c.col) {
+				c.row = l.YOffset
+				c.col = endCol
+			}
+		}
+	}
+
+	// Add items for all managed apps, placing each in its category section
 	for _, appID := range r.state.ManagedAppIDs() {
 		if onBoard[appID] {
 			continue
@@ -329,6 +396,25 @@ func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board, d
 
 		sourceID := r.state.GetAppSource(appID)
 		integrationIDs := r.integrationIDsForSource(sourceID)
+
+		// Resolve target section from category
+		targetSection := defaultSectionID
+		if cat := appCategory[appID]; cat != "" {
+			if secID, ok := categorySectionID[cat]; ok {
+				targetSection = secID
+			}
+		}
+
+		// Get or create cursor for this section
+		c, ok := cursors[targetSection]
+		if !ok {
+			c = &cursor{}
+			cursors[targetSection] = c
+		}
+		if c.col >= colCount {
+			c.col = 0
+			c.row++
+		}
 
 		items = append(items, homarr.BoardItem{
 			ID:   "managed-" + appID,
@@ -345,20 +431,16 @@ func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board, d
 			Layouts: []homarr.ItemLayout{
 				{
 					LayoutID:  layoutID,
-					SectionID: sectionID,
-					XOffset:   col,
-					YOffset:   row,
+					SectionID: targetSection,
+					XOffset:   c.col,
+					YOffset:   c.row,
 					Width:     1,
 					Height:    1,
 				},
 			},
 		})
 
-		col++
-		if col >= colCount {
-			col = 0
-			row++
-		}
+		c.col++
 	}
 
 	managedCount := len(items) - baseLen
@@ -375,14 +457,59 @@ func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board, d
 
 	slog.Info("saving board", "items", len(items))
 
-	sections := make([]homarr.Section, len(board.Sections))
-	copy(sections, board.Sections)
-
 	return r.client.SaveBoard(ctx, homarr.BoardSave{
 		ID:       board.ID,
 		Sections: sections,
 		Items:    items,
 	})
+}
+
+// buildCategorySectionMap maps category names to the "empty" section ID that
+// follows each "category" header section on the board. Items are placed in
+// the empty section, not in the category header itself.
+func (r *Reconciler) buildCategorySectionMap(sections []homarr.Section) map[string]string {
+	result := make(map[string]string)
+
+	// Sort by YOffset to find the empty section after each category
+	type indexedSection struct {
+		idx int
+		sec homarr.Section
+	}
+	sorted := make([]indexedSection, len(sections))
+	for i, s := range sections {
+		sorted[i] = indexedSection{i, s}
+	}
+	// Stable sort by YOffset
+	for i := 1; i < len(sorted); i++ {
+		for j := i; j > 0 && sorted[j].sec.YOffset < sorted[j-1].sec.YOffset; j-- {
+			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
+		}
+	}
+
+	for i, is := range sorted {
+		if is.sec.Kind != "category" || is.sec.Name == "" {
+			continue
+		}
+		// Find the next empty section after this category
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[j].sec.Kind == "empty" {
+				result[is.sec.Name] = sorted[j].sec.ID
+				break
+			}
+		}
+	}
+
+	return result
+}
+
+// generateSectionID creates a deterministic section ID for new categories.
+func generateSectionID(prefix, name string) string {
+	// Simple hash-based ID to be deterministic across reconciles
+	h := uint32(0)
+	for _, c := range name {
+		h = h*31 + uint32(c)
+	}
+	return fmt.Sprintf("%s-%s-%08x", prefix, strings.ToLower(strings.ReplaceAll(name, " ", "-")), h)
 }
 
 // adoptAndDedupApps matches existing Homarr apps to desired entries by name+href,

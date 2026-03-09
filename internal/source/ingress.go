@@ -46,8 +46,8 @@ func (s *IngressSource) List(ctx context.Context) ([]DashboardEntry, error) {
 			if entry.Name == "" {
 				entry.Name = cases.Title(language.English).String(ing.Name)
 			}
-			if entry.Group == "" {
-				entry.Group = ing.Namespace
+			if entry.Category == "" {
+				entry.Category = ing.Namespace
 			}
 			if entry.URL == "" {
 				entry.URL = inferIngressURL(&ing)

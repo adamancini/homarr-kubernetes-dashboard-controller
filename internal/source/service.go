@@ -46,8 +46,8 @@ func (s *ServiceSource) List(ctx context.Context) ([]DashboardEntry, error) {
 			if entry.Name == "" {
 				entry.Name = cases.Title(language.English).String(svc.Name)
 			}
-			if entry.Group == "" {
-				entry.Group = svc.Namespace
+			if entry.Category == "" {
+				entry.Category = svc.Namespace
 			}
 			// Services have no host to infer — URL must come from annotation
 			entries = append(entries, entry)
