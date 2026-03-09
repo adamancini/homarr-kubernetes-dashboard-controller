@@ -25,9 +25,9 @@ func TestHTTPRouteSource_List(t *testing.T) {
 	route.SetName("grafana")
 	route.SetNamespace("monitoring")
 	route.SetAnnotations(map[string]string{
-		"homarr.dev/enabled": "true",
-		"homarr.dev/name":    "Grafana",
-		"homarr.dev/icon":    "grafana",
+		"homarr.dev/enabled":  "true",
+		"homarr.dev/name":     "Grafana",
+		"homarr.dev/icon":     "grafana",
 		"homarr.dev/category": "Infra",
 	})
 	route.Object["spec"] = map[string]any{

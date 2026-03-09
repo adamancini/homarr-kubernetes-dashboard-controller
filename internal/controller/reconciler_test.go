@@ -578,8 +578,8 @@ func TestReconciler_MovesAppToCorrectCategory(t *testing.T) {
 			},
 			Items: []homarr.BoardItem{
 				{
-					ID:   "managed-app-flux",
-					Kind: "app",
+					ID:      "managed-app-flux",
+					Kind:    "app",
 					Options: mustMarshal(map[string]string{"appId": "app-flux"}),
 					Layouts: []homarr.ItemLayout{
 						{LayoutID: "layout-1", SectionID: "sec-services", XOffset: 0, YOffset: 0, Width: 1, Height: 1},

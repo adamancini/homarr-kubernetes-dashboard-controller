@@ -20,11 +20,11 @@ func TestServiceSource_List(t *testing.T) {
 			Name:      "sonarr",
 			Namespace: "htpc",
 			Annotations: map[string]string{
-				"homarr.dev/enabled": "true",
-				"homarr.dev/name":    "Sonarr",
-				"homarr.dev/icon":    "sonarr",
+				"homarr.dev/enabled":  "true",
+				"homarr.dev/name":     "Sonarr",
+				"homarr.dev/icon":     "sonarr",
 				"homarr.dev/category": "Services",
-				"homarr.dev/url":     "https://sonarr.example.com",
+				"homarr.dev/url":      "https://sonarr.example.com",
 			},
 		},
 	}

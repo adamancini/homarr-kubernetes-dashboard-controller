@@ -25,9 +25,9 @@ func TestIngressRouteSource_List(t *testing.T) {
 	ir.SetName("grafana")
 	ir.SetNamespace("monitoring")
 	ir.SetAnnotations(map[string]string{
-		"homarr.dev/enabled": "true",
-		"homarr.dev/name":    "Grafana",
-		"homarr.dev/icon":    "grafana",
+		"homarr.dev/enabled":  "true",
+		"homarr.dev/name":     "Grafana",
+		"homarr.dev/icon":     "grafana",
 		"homarr.dev/category": "Infra",
 	})
 	ir.Object["spec"] = map[string]any{
