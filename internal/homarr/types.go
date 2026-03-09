@@ -56,10 +56,6 @@ type Section struct {
 type BoardItem struct {
 	ID              string          `json:"id"`
 	Kind            string          `json:"kind"`
-	XOffset         int             `json:"xOffset"`
-	YOffset         int             `json:"yOffset"`
-	Width           int             `json:"width"`
-	Height          int             `json:"height"`
 	Options         json.RawMessage `json:"options,omitempty"`
 	Layouts         []ItemLayout    `json:"layouts"`
 	IntegrationIDs  []string        `json:"integrationIds"`
@@ -97,10 +93,11 @@ type Integration struct {
 }
 
 type IntegrationCreate struct {
-	Name    string              `json:"name"`
-	URL     string              `json:"url"`
-	Kind    string              `json:"kind"`
-	Secrets []IntegrationSecret `json:"secrets"`
+	Name                        string              `json:"name"`
+	URL                         string              `json:"url"`
+	Kind                        string              `json:"kind"`
+	Secrets                     []IntegrationSecret `json:"secrets"`
+	AttemptSearchEngineCreation bool                `json:"attemptSearchEngineCreation"`
 }
 
 type IntegrationSecret struct {

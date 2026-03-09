@@ -104,7 +104,10 @@ func TestReconciler_CreatesNewApps(t *testing.T) {
 }
 
 func TestReconciler_DeletesRemovedApps(t *testing.T) {
-	mock := &mockHomarrClient{boardExists: true}
+	mock := &mockHomarrClient{
+		boardExists: true,
+		apps:        []homarr.App{{ID: "old-app-id", Name: "Removed", Href: "https://removed.example.com"}},
+	}
 	r := controller.NewReconciler(mock, nil, "default", 12, "https://cdn.example.com/icons/svg")
 	r.State().SetApp("old-app-id", "htpc/Ingress/removed")
 
@@ -182,7 +185,10 @@ func TestReconciler_CreatesIntegration(t *testing.T) {
 }
 
 func TestReconciler_DeletesRemovedIntegrations(t *testing.T) {
-	mock := &mockHomarrClient{boardExists: true}
+	mock := &mockHomarrClient{
+		boardExists:  true,
+		integrations: []homarr.Integration{{ID: "old-intg-id", Name: "Removed", Kind: "sonarr", URL: "http://removed.svc:8989"}},
+	}
 	r := controller.NewReconciler(mock, nil, "default", 12, "")
 	r.State().SetIntegration("old-intg-id", "htpc/Ingress/removed")
 
@@ -308,5 +314,98 @@ func TestReconciler_SkipsIntegrationWithoutSecretReader(t *testing.T) {
 	}
 	if result.IntegrationsCreated != 0 {
 		t.Errorf("IntegrationsCreated = %d, want 0", result.IntegrationsCreated)
+	}
+}
+
+func TestReconciler_AdoptsExistingAppsOnRestart(t *testing.T) {
+	// Simulate a restart: Homarr already has the app from a previous run,
+	// but the controller's in-memory state is empty (fresh start).
+	mock := &mockHomarrClient{
+		boardExists: true,
+		apps: []homarr.App{
+			{ID: "existing-1", Name: "Sonarr", Href: "https://sonarr.example.com"},
+		},
+	}
+	src := &mockSource{
+		entries: []source.DashboardEntry{
+			{ID: "htpc/Ingress/sonarr", Name: "Sonarr", URL: "https://sonarr.example.com"},
+		},
+	}
+
+	r := controller.NewReconciler(mock, []controller.SourceLister{src}, "default", 12, "")
+	result, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	// Should adopt the existing app, not create a new one
+	if result.Created != 0 {
+		t.Errorf("Created = %d, want 0 (should adopt existing)", result.Created)
+	}
+	if len(mock.createdApps) != 0 {
+		t.Errorf("createdApps = %v, want empty", mock.createdApps)
+	}
+}
+
+func TestReconciler_DeletesDuplicateApps(t *testing.T) {
+	// Simulate duplicates from multiple restarts: 3 copies of the same app
+	mock := &mockHomarrClient{
+		boardExists: true,
+		apps: []homarr.App{
+			{ID: "app-1", Name: "Bazarr", Href: "https://bazarr.example.com"},
+			{ID: "app-2", Name: "Bazarr", Href: "https://bazarr.example.com"},
+			{ID: "app-3", Name: "Bazarr", Href: "https://bazarr.example.com"},
+		},
+	}
+	src := &mockSource{
+		entries: []source.DashboardEntry{
+			{ID: "htpc/Ingress/bazarr", Name: "Bazarr", URL: "https://bazarr.example.com"},
+		},
+	}
+
+	r := controller.NewReconciler(mock, []controller.SourceLister{src}, "default", 12, "")
+	result, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if result.Created != 0 {
+		t.Errorf("Created = %d, want 0", result.Created)
+	}
+	// Should adopt 1 and delete the other 2 duplicates
+	if result.Deleted != 2 {
+		t.Errorf("Deleted = %d, want 2 (duplicates)", result.Deleted)
+	}
+	if len(mock.deletedApps) != 2 {
+		t.Fatalf("deletedApps = %v, want 2 entries", mock.deletedApps)
+	}
+	// The first app should be kept, the rest deleted
+	for _, id := range mock.deletedApps {
+		if id == "app-1" {
+			t.Error("should not delete the first (adopted) app")
+		}
+	}
+}
+
+func TestReconciler_ClearsStaleStateOnRestart(t *testing.T) {
+	// State references an app that no longer exists in Homarr (manually deleted)
+	mock := &mockHomarrClient{
+		boardExists: true,
+		apps:        []homarr.App{}, // app was deleted from Homarr
+	}
+	src := &mockSource{
+		entries: []source.DashboardEntry{
+			{ID: "htpc/Ingress/sonarr", Name: "Sonarr", URL: "https://sonarr.example.com"},
+		},
+	}
+
+	r := controller.NewReconciler(mock, []controller.SourceLister{src}, "default", 12, "")
+	r.State().SetApp("deleted-from-homarr", "htpc/Ingress/sonarr")
+
+	result, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	// Stale state should be cleared and the app re-created
+	if result.Created != 1 {
+		t.Errorf("Created = %d, want 1 (should re-create after stale state cleared)", result.Created)
 	}
 }
