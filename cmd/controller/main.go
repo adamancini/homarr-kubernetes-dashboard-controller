@@ -130,6 +130,7 @@ func main() {
 	}
 
 	reconciler := controller.NewReconciler(homarrClient, srcAdapters, cfg.BoardName, cfg.BoardColumnCount, cfg.DefaultIconBaseURL)
+	reconciler.SetSecretReader(controller.NewKubeSecretReader(mgr.GetClient()))
 
 	// Add reconciler as a Runnable that runs on a timer
 	if err := mgr.Add(&timerRunnable{
@@ -178,7 +179,9 @@ func (t *timerRunnable) runOnce(ctx context.Context) {
 		t.log.Error("reconcile failed", "error", err)
 		return
 	}
-	if result.Created > 0 || result.Updated > 0 || result.Deleted > 0 {
-		t.log.Info("reconcile complete", "created", result.Created, "updated", result.Updated, "deleted", result.Deleted)
+	if result.Created > 0 || result.Updated > 0 || result.Deleted > 0 || result.IntegrationsCreated > 0 || result.IntegrationsDeleted > 0 {
+		t.log.Info("reconcile complete",
+			"created", result.Created, "updated", result.Updated, "deleted", result.Deleted,
+			"integrations_created", result.IntegrationsCreated, "integrations_deleted", result.IntegrationsDeleted)
 	}
 }

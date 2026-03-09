@@ -27,16 +27,24 @@ type HomarrClient interface {
 	ListIntegrations(ctx context.Context) ([]homarr.Integration, error)
 }
 
+// SecretReader reads Kubernetes Secret data by namespace and name.
+type SecretReader interface {
+	ReadSecret(ctx context.Context, namespace, name string) (map[string][]byte, error)
+}
+
 type ReconcileResult struct {
-	Created int
-	Updated int
-	Deleted int
+	Created             int
+	Updated             int
+	Deleted             int
+	IntegrationsCreated int
+	IntegrationsDeleted int
 }
 
 type Reconciler struct {
 	client       HomarrClient
 	sources      []SourceLister
 	state        *state.InMemoryState
+	secretReader SecretReader
 	boardName    string
 	boardColumns int
 	iconBaseURL  string
@@ -52,6 +60,8 @@ func NewReconciler(client HomarrClient, sources []SourceLister, boardName string
 		iconBaseURL:  iconBaseURL,
 	}
 }
+
+func (r *Reconciler) SetSecretReader(sr SecretReader) { r.secretReader = sr }
 
 func (r *Reconciler) State() *state.InMemoryState { return r.state }
 
@@ -92,7 +102,9 @@ func (r *Reconciler) Reconcile(ctx context.Context) (ReconcileResult, error) {
 		}
 	}
 
-	// Determine what to create (in desired but not in state)
+	// --- App reconciliation ---
+
+	// Create apps (in desired but not in state)
 	for sourceID, entry := range desired {
 		if _, exists := r.state.FindAppBySource(sourceID); exists {
 			continue
@@ -116,7 +128,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (ReconcileResult, error) {
 		result.Created++
 	}
 
-	// Determine what to delete (in state but not in desired)
+	// Delete apps (in state but not in desired)
 	for _, homarrID := range r.state.ManagedAppIDs() {
 		sourceID := r.state.GetAppSource(homarrID)
 		if _, stillDesired := desired[sourceID]; stillDesired {
@@ -130,9 +142,65 @@ func (r *Reconciler) Reconcile(ctx context.Context) (ReconcileResult, error) {
 		result.Deleted++
 	}
 
-	// Place apps on the board if any were created or deleted
-	if result.Created > 0 || result.Deleted > 0 {
-		if err := r.placeAppsOnBoard(ctx, board); err != nil {
+	// --- Integration reconciliation ---
+
+	// Build desired integrations (entries that have IntegrationType set)
+	desiredIntegrations := make(map[string]source.DashboardEntry)
+	for sourceID, entry := range desired {
+		if entry.IntegrationType != "" {
+			desiredIntegrations[sourceID] = entry
+		}
+	}
+
+	// Create integrations (in desired but not in state)
+	for sourceID, entry := range desiredIntegrations {
+		if _, exists := r.state.FindIntegrationBySource(sourceID); exists {
+			continue
+		}
+
+		secrets, err := r.readIntegrationSecrets(ctx, entry)
+		if err != nil {
+			slog.Error("failed to read integration secret", "source", sourceID, "error", err)
+			continue
+		}
+
+		intgURL := entry.IntegrationURL
+		if intgURL == "" {
+			intgURL = entry.URL
+		}
+
+		intg, err := r.client.CreateIntegration(ctx, homarr.IntegrationCreate{
+			Name:    entry.Name,
+			URL:     intgURL,
+			Kind:    entry.IntegrationType,
+			Secrets: secrets,
+		})
+		if err != nil {
+			slog.Error("failed to create integration", "source", sourceID, "kind", entry.IntegrationType, "error", err)
+			continue
+		}
+		r.state.SetIntegration(intg.ID, sourceID)
+		result.IntegrationsCreated++
+		slog.Info("created integration", "source", sourceID, "kind", entry.IntegrationType, "id", intg.ID)
+	}
+
+	// Delete integrations (in state but not in desired)
+	for _, homarrID := range r.state.ManagedIntegrationIDs() {
+		sourceID := r.state.GetIntegrationSource(homarrID)
+		if _, stillDesired := desiredIntegrations[sourceID]; stillDesired {
+			continue
+		}
+		if err := r.client.DeleteIntegration(ctx, homarrID); err != nil {
+			slog.Error("failed to delete integration", "homarrID", homarrID, "error", err)
+			continue
+		}
+		r.state.RemoveIntegration(homarrID)
+		result.IntegrationsDeleted++
+	}
+
+	// Place apps on the board (with integration linkage)
+	if result.Created > 0 || result.Deleted > 0 || result.IntegrationsCreated > 0 || result.IntegrationsDeleted > 0 {
+		if err := r.placeAppsOnBoard(ctx, board, desired); err != nil {
 			slog.Error("failed to place apps on board", "error", err)
 		}
 	}
@@ -140,22 +208,59 @@ func (r *Reconciler) Reconcile(ctx context.Context) (ReconcileResult, error) {
 	return result, nil
 }
 
-// placeAppsOnBoard ensures all managed apps are placed as items on the board.
-func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board) error {
+// readIntegrationSecrets reads K8s Secret data for an integration entry.
+// If integration-secret-key is set, reads that single key as "apiKey".
+// Otherwise, reads all keys from the Secret (key names map to Homarr secret kinds).
+func (r *Reconciler) readIntegrationSecrets(ctx context.Context, entry source.DashboardEntry) ([]homarr.IntegrationSecret, error) {
+	if r.secretReader == nil {
+		return nil, fmt.Errorf("no secret reader configured")
+	}
+	if entry.IntegrationSecret == "" {
+		return nil, nil
+	}
+
+	// Extract namespace from the entry ID (format: "namespace/kind/name")
+	ns := namespaceFromID(entry.ID)
+	if ns == "" {
+		return nil, fmt.Errorf("cannot determine namespace from entry ID %q", entry.ID)
+	}
+
+	data, err := r.secretReader.ReadSecret(ctx, ns, entry.IntegrationSecret)
+	if err != nil {
+		return nil, fmt.Errorf("read secret %s/%s: %w", ns, entry.IntegrationSecret, err)
+	}
+
+	if entry.IntegrationSecretKey != "" {
+		// Single key mode: read the specified key as "apiKey"
+		val, ok := data[entry.IntegrationSecretKey]
+		if !ok {
+			return nil, fmt.Errorf("key %q not found in secret %s/%s", entry.IntegrationSecretKey, ns, entry.IntegrationSecret)
+		}
+		return []homarr.IntegrationSecret{
+			{Kind: "apiKey", Value: string(val)},
+		}, nil
+	}
+
+	// Multi-key mode: each key in the Secret becomes a Homarr secret kind
+	var secrets []homarr.IntegrationSecret
+	for k, v := range data {
+		secrets = append(secrets, homarr.IntegrationSecret{
+			Kind:  k,
+			Value: string(v),
+		})
+	}
+	return secrets, nil
+}
+
+// placeAppsOnBoard ensures all managed apps are placed as items on the board,
+// with integration IDs linked where available.
+func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board, desired map[string]source.DashboardEntry) error {
 	if len(board.Layouts) == 0 || len(board.Sections) == 0 {
 		return fmt.Errorf("board %q has no layouts or sections", board.Name)
 	}
 
 	layoutID := board.Layouts[0].ID
 	sectionID := board.Sections[0].ID
-
-	// Build a set of app IDs already on the board
-	existingItems := make(map[string]bool)
-	for _, item := range board.Items {
-		if item.Kind == "app" {
-			existingItems[item.ID] = true
-		}
-	}
 
 	// Keep existing items and add new ones for managed apps not yet on board
 	items := make([]homarr.BoardItem, len(board.Items))
@@ -181,6 +286,10 @@ func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board) e
 			continue
 		}
 
+		// Find integration IDs for this app
+		sourceID := r.state.GetAppSource(appID)
+		integrationIDs := r.integrationIDsForSource(sourceID)
+
 		// Create a new board item for this app
 		itemID := "managed-" + appID
 		items = append(items, homarr.BoardItem{
@@ -196,7 +305,7 @@ func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board) e
 			AdvancedOptions: marshalJSON(map[string]any{
 				"customCssClasses": []string{},
 			}),
-			IntegrationIDs: []string{},
+			IntegrationIDs: integrationIDs,
 			Layouts: []homarr.ItemLayout{
 				{
 					LayoutID:  layoutID,
@@ -225,6 +334,25 @@ func (r *Reconciler) placeAppsOnBoard(ctx context.Context, board homarr.Board) e
 		Sections: sections,
 		Items:    items,
 	})
+}
+
+// integrationIDsForSource returns the Homarr integration IDs associated with a source entry.
+func (r *Reconciler) integrationIDsForSource(sourceID string) []string {
+	intgID, exists := r.state.FindIntegrationBySource(sourceID)
+	if !exists {
+		return []string{}
+	}
+	return []string{intgID}
+}
+
+func namespaceFromID(id string) string {
+	// ID format: "namespace/kind/name"
+	for i, c := range id {
+		if c == '/' {
+			return id[:i]
+		}
+	}
+	return ""
 }
 
 func appIDFromItem(item homarr.BoardItem) string {
