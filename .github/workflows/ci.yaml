@@ -33,7 +33,7 @@ jobs:
       - name: Run tests
         run: go test -race -coverprofile=coverage.txt ./...
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.txt
         continue-on-error: true
