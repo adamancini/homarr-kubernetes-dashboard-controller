@@ -3,7 +3,7 @@ module github.com/adamancini/homarr-kubernetes-dashboard-controller
 go 1.26.0
 
 require (
-	golang.org/x/text v0.35.0
+	golang.org/x/text v0.36.0
 	k8s.io/api v0.35.3
 	k8s.io/apimachinery v0.35.3
 	k8s.io/client-go v0.35.3
