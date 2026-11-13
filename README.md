@@ -30,9 +30,9 @@ All annotations use a configurable prefix (default `homarr.dev`).
 | `homarr.dev/icon` | no | Icon URL or name (resolved against `--default-icon-base-url`) |
 | `homarr.dev/description` | no | App description |
 | `homarr.dev/ping-url` | no | Health check URL |
-| `homarr.dev/group` | no | Group name for organization |
+| `homarr.dev/category` | no | Board category. Apps are placed in a container section titled with the category; the container is created when missing and reused (matched by title) when present. `homarr.dev/group` is a deprecated alias |
 | `homarr.dev/priority` | no | Sort priority (integer) |
-| `homarr.dev/integration-type` | no | Homarr integration kind (e.g. `sonarr`, `radarr`) |
+| `homarr.dev/integration-type` | no | Homarr integration kind (e.g. `sonarr`, `radarr`). Homarr tests the connection before saving; a failed test is logged as `failed to create integration` with Homarr's response and retried on the next reconcile |
 | `homarr.dev/integration-url` | no | Integration API URL (defaults to app URL) |
 | `homarr.dev/integration-secret` | no | Kubernetes Secret name containing integration credentials |
 | `homarr.dev/integration-secret-key` | no | Specific key within the Secret (reads as `apiKey`) |
@@ -82,7 +82,7 @@ helm install homarr-dashboard-controller \
 
 ### Prerequisites
 
-- Homarr v1 instance with API key authentication enabled
+- Homarr v2.12.0 or later (board sections are `empty` roots and `container` sections), with API key authentication enabled
 - A Kubernetes Secret containing the Homarr API key:
 
 ```bash
@@ -153,6 +153,12 @@ make test
 
 # Lint
 make lint
+
+# Read-only check of the saveBoard payload against a running Homarr
+# (no writes: saveBoard is probed with a non-existent board id)
+HOMARR_URL=http://127.0.0.1:7575 HOMARR_API_KEY=... HOMARR_BOARD=homelab \
+KUBE_CONTEXT=my-cluster HOMARR_NAMESPACES=default,media \
+go test -tags homarr_live -run TestLiveHomarr -v ./internal/controller/
 
 # Build Docker image
 make docker-build VERSION=dev

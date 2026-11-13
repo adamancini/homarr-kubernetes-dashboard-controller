@@ -179,9 +179,8 @@ func (t *timerRunnable) runOnce(ctx context.Context) {
 		t.log.Error("reconcile failed", "error", err)
 		return
 	}
-	if result.Created > 0 || result.Updated > 0 || result.Deleted > 0 || result.IntegrationsCreated > 0 || result.IntegrationsDeleted > 0 {
-		t.log.Info("reconcile complete",
-			"created", result.Created, "updated", result.Updated, "deleted", result.Deleted,
-			"integrations_created", result.IntegrationsCreated, "integrations_deleted", result.IntegrationsDeleted)
-	}
+	t.log.Info("reconcile complete",
+		"created", result.Created, "updated", result.Updated, "deleted", result.Deleted,
+		"integrations_created", result.IntegrationsCreated, "integrations_deleted", result.IntegrationsDeleted,
+		"board_saved", result.BoardSaved)
 }

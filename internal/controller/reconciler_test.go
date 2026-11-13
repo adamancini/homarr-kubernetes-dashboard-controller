@@ -34,16 +34,16 @@ func (m *mockSecretReader) ReadSecret(ctx context.Context, namespace, name strin
 
 // mockHomarrClient records API calls
 type mockHomarrClient struct {
-	apps                []homarr.App
-	integrations        []homarr.Integration
-	createdApps         []homarr.AppCreate
-	deletedApps         []string
-	createdIntegrations []homarr.IntegrationCreate
-	deletedIntegrations []string
-	boardExists         bool
-	board               *homarr.Board // custom board for GetBoardByName
-	savedBoard          *homarr.BoardSave
-	saveCalls           int
+	apps                 []homarr.App
+	integrations         []homarr.Integration
+	createdApps          []homarr.AppCreate
+	deletedApps          []string
+	createdIntegrations  []homarr.IntegrationCreate
+	deletedIntegrations  []string
+	boardExists          bool
+	board                *homarr.Board // custom board for GetBoardByName
+	savedBoard           *homarr.BoardSave
+	saveCalls            int
 	createIntegrationErr error // when set, CreateIntegration fails with it
 }
 
@@ -432,19 +432,6 @@ func TestReconciler_ClearsStaleStateOnRestart(t *testing.T) {
 	if result.Created != 1 {
 		t.Errorf("Created = %d, want 1 (should re-create after stale state cleared)", result.Created)
 	}
-}
-
-func contains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
-}
-
-func unmarshalJSONHelper(data []byte, v any) error {
-	return json.Unmarshal(data, v)
 }
 
 func mustMarshal(v any) []byte {
