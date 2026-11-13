@@ -78,6 +78,35 @@ func TestCreateApp(t *testing.T) {
 	}
 }
 
+func TestCreateApp_EmptyIDIsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"result":{"data":{"json":{"name":"Sonarr"}}}}`))
+	}))
+	defer srv.Close()
+
+	c := homarr.NewClient(srv.URL, "test-key")
+	if app, err := c.CreateApp(context.Background(), homarr.AppCreate{Name: "Sonarr"}); err == nil {
+		t.Fatalf("expected error for a create without id, got %+v", app)
+	}
+}
+
+func TestCreateApp_AcceptsLegacyAppIDField(t *testing.T) {
+	// homarr v2.12.0 app.create returns both id and the legacy appId.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"result":{"data":{"json":{"appId":"a1","name":"Sonarr"}}}}`))
+	}))
+	defer srv.Close()
+
+	c := homarr.NewClient(srv.URL, "test-key")
+	app, err := c.CreateApp(context.Background(), homarr.AppCreate{Name: "Sonarr"})
+	if err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	if app.ID != "a1" {
+		t.Errorf("ID = %q, want a1", app.ID)
+	}
+}
+
 func TestDeleteApp(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/trpc/app.delete" {

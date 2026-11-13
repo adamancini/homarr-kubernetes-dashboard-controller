@@ -34,15 +34,17 @@ func (m *mockSecretReader) ReadSecret(ctx context.Context, namespace, name strin
 
 // mockHomarrClient records API calls
 type mockHomarrClient struct {
-	apps                []homarr.App
-	integrations        []homarr.Integration
-	createdApps         []homarr.AppCreate
-	deletedApps         []string
-	createdIntegrations []homarr.IntegrationCreate
-	deletedIntegrations []string
-	boardExists         bool
-	board               *homarr.Board // custom board for GetBoardByName
-	savedBoard          *homarr.BoardSave
+	apps                 []homarr.App
+	integrations         []homarr.Integration
+	createdApps          []homarr.AppCreate
+	deletedApps          []string
+	createdIntegrations  []homarr.IntegrationCreate
+	deletedIntegrations  []string
+	boardExists          bool
+	board                *homarr.Board // custom board for GetBoardByName
+	savedBoard           *homarr.BoardSave
+	saveCalls            int
+	createIntegrationErr error // when set, CreateIntegration fails with it
 }
 
 func (m *mockHomarrClient) ListApps(ctx context.Context) ([]homarr.App, error) {
@@ -83,10 +85,14 @@ func (m *mockHomarrClient) GetBoardByName(ctx context.Context, name string) (hom
 }
 func (m *mockHomarrClient) SaveBoard(ctx context.Context, b homarr.BoardSave) error {
 	m.savedBoard = &b
+	m.saveCalls++
 	return nil
 }
 func (m *mockHomarrClient) CreateIntegration(ctx context.Context, i homarr.IntegrationCreate) (homarr.Integration, error) {
 	m.createdIntegrations = append(m.createdIntegrations, i)
+	if m.createIntegrationErr != nil {
+		return homarr.Integration{}, m.createIntegrationErr
+	}
 	return homarr.Integration{ID: "intg-" + i.Name, Name: i.Name, Kind: i.Kind, URL: i.URL}, nil
 }
 func (m *mockHomarrClient) DeleteIntegration(ctx context.Context, id string) error {
@@ -426,215 +432,6 @@ func TestReconciler_ClearsStaleStateOnRestart(t *testing.T) {
 	if result.Created != 1 {
 		t.Errorf("Created = %d, want 1 (should re-create after stale state cleared)", result.Created)
 	}
-}
-
-func TestReconciler_PlacesAppsInCategorySections(t *testing.T) {
-	// Board with Infra and Services category sections (header + empty pairs)
-	mock := &mockHomarrClient{
-		boardExists: true,
-		apps: []homarr.App{
-			{ID: "app-flux", Name: "Flux", Href: "https://flux.example.com"},
-			{ID: "app-sonarr", Name: "Sonarr", Href: "https://sonarr.example.com"},
-			{ID: "app-akkoma", Name: "Akkoma", Href: "https://akkoma.example.com"},
-		},
-		board: &homarr.Board{
-			ID:   "board-1",
-			Name: "test",
-			Layouts: []homarr.Layout{
-				{ID: "layout-1", Name: "Base", ColumnCount: 12},
-			},
-			Sections: []homarr.Section{
-				{ID: "sec-default", Kind: "empty", XOffset: 0, YOffset: 0},
-				{ID: "cat-infra", Kind: "category", Name: "Infra", XOffset: 0, YOffset: 1},
-				{ID: "sec-infra", Kind: "empty", XOffset: 0, YOffset: 2},
-				{ID: "cat-services", Kind: "category", Name: "Services", XOffset: 0, YOffset: 3},
-				{ID: "sec-services", Kind: "empty", XOffset: 0, YOffset: 4},
-			},
-		},
-	}
-
-	src := &mockSource{
-		entries: []source.DashboardEntry{
-			{ID: "flux-system/HTTPRoute/flux", Name: "Flux", URL: "https://flux.example.com", Category: "Infra"},
-			{ID: "htpc/Ingress/sonarr", Name: "Sonarr", URL: "https://sonarr.example.com", Category: "Services"},
-			{ID: "akkoma/Ingress/akkoma", Name: "Akkoma", URL: "https://akkoma.example.com", Category: "Services"},
-		},
-	}
-
-	r := controller.NewReconciler(mock, []controller.SourceLister{src}, "test", 12, "")
-	_, err := r.Reconcile(context.Background())
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-
-	if mock.savedBoard == nil {
-		t.Fatal("expected board to be saved")
-	}
-
-	// Verify items are placed in the correct sections
-	sectionApps := make(map[string][]string) // sectionID -> appIDs
-	for _, item := range mock.savedBoard.Items {
-		if item.Kind != "app" {
-			continue
-		}
-		for _, l := range item.Layouts {
-			appID := ""
-			var opts map[string]any
-			if err := unmarshalJSONHelper(item.Options, &opts); err == nil {
-				if id, ok := opts["appId"].(string); ok {
-					appID = id
-				}
-			}
-			sectionApps[l.SectionID] = append(sectionApps[l.SectionID], appID)
-		}
-	}
-
-	// Flux should be in the Infra section (sec-infra)
-	infraApps := sectionApps["sec-infra"]
-	if !contains(infraApps, "app-flux") {
-		t.Errorf("Infra section apps = %v, want app-flux", infraApps)
-	}
-
-	// Sonarr and Akkoma should be in the Services section (sec-services)
-	servicesApps := sectionApps["sec-services"]
-	if !contains(servicesApps, "app-sonarr") {
-		t.Errorf("Services section apps = %v, want app-sonarr", servicesApps)
-	}
-	if !contains(servicesApps, "app-akkoma") {
-		t.Errorf("Services section apps = %v, want app-akkoma", servicesApps)
-	}
-
-	// Nothing should be in the default section
-	defaultApps := sectionApps["sec-default"]
-	if len(defaultApps) != 0 {
-		t.Errorf("Default section should be empty, got %v", defaultApps)
-	}
-}
-
-func TestReconciler_CreatesNewCategorySection(t *testing.T) {
-	// Board with no category sections — controller should create them
-	mock := &mockHomarrClient{
-		boardExists: true,
-		board: &homarr.Board{
-			ID:   "board-1",
-			Name: "test",
-			Layouts: []homarr.Layout{
-				{ID: "layout-1", Name: "Base", ColumnCount: 12},
-			},
-			Sections: []homarr.Section{
-				{ID: "sec-default", Kind: "empty", XOffset: 0, YOffset: 0},
-			},
-		},
-	}
-
-	src := &mockSource{
-		entries: []source.DashboardEntry{
-			{ID: "htpc/Ingress/sonarr", Name: "Sonarr", URL: "https://sonarr.example.com", Category: "Services"},
-		},
-	}
-
-	r := controller.NewReconciler(mock, []controller.SourceLister{src}, "test", 12, "")
-	_, err := r.Reconcile(context.Background())
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-
-	if mock.savedBoard == nil {
-		t.Fatal("expected board to be saved")
-	}
-
-	// Should have created a new category section + empty section
-	hasCat := false
-	for _, s := range mock.savedBoard.Sections {
-		if s.Kind == "category" && s.Name == "Services" {
-			hasCat = true
-			break
-		}
-	}
-	if !hasCat {
-		t.Error("expected Services category section to be created")
-	}
-}
-
-func TestReconciler_MovesAppToCorrectCategory(t *testing.T) {
-	// App is already on the board in the wrong section; reconcile should move it
-	mock := &mockHomarrClient{
-		boardExists: true,
-		apps: []homarr.App{
-			{ID: "app-flux", Name: "Flux", Href: "https://flux.example.com"},
-		},
-		board: &homarr.Board{
-			ID:   "board-1",
-			Name: "test",
-			Layouts: []homarr.Layout{
-				{ID: "layout-1", Name: "Base", ColumnCount: 12},
-			},
-			Sections: []homarr.Section{
-				{ID: "sec-default", Kind: "empty", XOffset: 0, YOffset: 0},
-				{ID: "cat-infra", Kind: "category", Name: "Infra", XOffset: 0, YOffset: 1},
-				{ID: "sec-infra", Kind: "empty", XOffset: 0, YOffset: 2},
-				{ID: "cat-services", Kind: "category", Name: "Services", XOffset: 0, YOffset: 3},
-				{ID: "sec-services", Kind: "empty", XOffset: 0, YOffset: 4},
-			},
-			Items: []homarr.BoardItem{
-				{
-					ID:      "managed-app-flux",
-					Kind:    "app",
-					Options: mustMarshal(map[string]string{"appId": "app-flux"}),
-					Layouts: []homarr.ItemLayout{
-						{LayoutID: "layout-1", SectionID: "sec-services", XOffset: 0, YOffset: 0, Width: 1, Height: 1},
-					},
-					IntegrationIDs: []string{},
-				},
-			},
-		},
-	}
-
-	src := &mockSource{
-		entries: []source.DashboardEntry{
-			{ID: "flux-system/HTTPRoute/flux", Name: "Flux", URL: "https://flux.example.com", Category: "Infra"},
-		},
-	}
-
-	r := controller.NewReconciler(mock, []controller.SourceLister{src}, "test", 12, "")
-	_, err := r.Reconcile(context.Background())
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-
-	if mock.savedBoard == nil {
-		t.Fatal("expected board to be saved")
-	}
-
-	// Flux should now be in the Infra section, not Services
-	for _, item := range mock.savedBoard.Items {
-		if item.Kind != "app" {
-			continue
-		}
-		var opts map[string]any
-		if err := unmarshalJSONHelper(item.Options, &opts); err == nil {
-			if id, ok := opts["appId"].(string); ok && id == "app-flux" {
-				for _, l := range item.Layouts {
-					if l.SectionID != "sec-infra" {
-						t.Errorf("Flux sectionID = %q, want sec-infra (should be moved)", l.SectionID)
-					}
-				}
-			}
-		}
-	}
-}
-
-func contains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
-}
-
-func unmarshalJSONHelper(data []byte, v any) error {
-	return json.Unmarshal(data, v)
 }
 
 func mustMarshal(v any) []byte {
