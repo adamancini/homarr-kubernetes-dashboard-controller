@@ -78,95 +78,88 @@ func TestGetBoardByName(t *testing.T) {
 	}
 }
 
-func TestSaveBoard_PreservesSectionFields(t *testing.T) {
-	// Homarr returns sections with collapsed, options, and layouts fields.
-	// SaveBoard must round-trip these fields so the tRPC schema validates.
+func TestSaveBoard_RoundTripsV2Sections(t *testing.T) {
+	// A board read from homarr v2.12.0 must be saved back in a shape its
+	// boardSaveSchema accepts: empty sections with offsets, container
+	// sections with options/collapsed/layouts. Pre-v2 "category" sections
+	// no longer exist.
 	var savedBody json.RawMessage
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/trpc/board.getBoardByName":
-			resp := map[string]any{
-				"result": map[string]any{
-					"data": map[string]any{
-						"json": map[string]any{
-							"id": "board-1", "name": "homelab",
-							"sections": []any{
-								map[string]any{
-									"id": "s1", "kind": "category", "name": "Apps",
-									"xOffset": 0, "yOffset": 0,
-									"collapsed": false,
-								},
-								map[string]any{
-									"id": "s2", "kind": "empty",
-									"xOffset": 0, "yOffset": 1,
-								},
-								map[string]any{
-									"id": "s3", "kind": "dynamic", "name": "Dynamic",
-									"xOffset": 0, "yOffset": 2,
-									"options": map[string]any{"css": ""},
-									"layouts": []any{map[string]any{"id": "l1", "columnCount": 12, "breakpoint": 0}},
-								},
-							},
-							"items":   []any{},
-							"layouts": []any{map[string]any{"id": "l1", "name": "default", "columnCount": 12, "breakpoint": 0}},
-						},
-					},
-				},
-			}
-			json.NewEncoder(w).Encode(resp)
+			w.Write([]byte(`{"result":{"data":{"json":{
+				"id":"board-1","name":"homelab",
+				"layouts":[
+					{"id":"mobile","name":"Mobile","columnCount":3,"breakpoint":0,"leftGutterColumnCount":0,"rightGutterColumnCount":0,"role":"mobile"},
+					{"id":"base","name":"Base","columnCount":12,"breakpoint":768,"leftGutterColumnCount":0,"rightGutterColumnCount":0,"role":"base"}],
+				"sections":[
+					{"id":"root","kind":"empty","xOffset":0,"yOffset":0,"name":null,"options":{},"layouts":[],"collapsed":false},
+					{"id":"c-infra","kind":"container","xOffset":null,"yOffset":null,"name":null,
+					 "options":{"title":"Infra","customCssClasses":[],"borderColor":"","showLabel":true,"collapsible":true,"showOpenAll":true,"scrollable":false},
+					 "layouts":[{"xOffset":0,"yOffset":0,"width":12,"height":1,"parentSectionId":"root","layoutId":"base"},
+					            {"xOffset":0,"yOffset":0,"width":3,"height":1,"parentSectionId":"root","layoutId":"mobile"}],
+					 "collapsed":false}],
+				"items":[]}}}}`))
 		case "/api/trpc/board.saveBoard":
-			body, _ := json.Marshal(map[string]any{}) // read the request body
-			_ = body
-			raw, _ := json.MarshalIndent(map[string]any{}, "", "  ")
-			_ = raw
-			// Capture the actual request body
 			var reqBody map[string]json.RawMessage
 			json.NewDecoder(r.Body).Decode(&reqBody)
 			savedBody = reqBody["json"]
-			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"result":{"data":{"json":null}}}`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
 		}
 	}))
 	defer srv.Close()
 
 	c := homarr.NewClient(srv.URL, "test-key")
-
 	board, err := c.GetBoardByName(context.Background(), "homelab")
 	if err != nil {
 		t.Fatalf("GetBoardByName: %v", err)
 	}
+	if len(board.Layouts) != 2 || board.Layouts[0].Role != "mobile" || board.Layouts[1].ColumnCount != 12 {
+		t.Fatalf("layouts not decoded: %+v", board.Layouts)
+	}
 
-	err = c.SaveBoard(context.Background(), homarr.BoardSave{
-		ID:       board.ID,
-		Sections: board.Sections,
-		Items:    board.Items,
-	})
-	if err != nil {
+	if err := c.SaveBoard(context.Background(), homarr.BoardSave{ID: board.ID, Sections: board.Sections, Items: board.Items}); err != nil {
 		t.Fatalf("SaveBoard: %v", err)
 	}
 
-	// Parse the saved body and verify section fields are preserved
 	var saved struct {
+		ID       string                       `json:"id"`
 		Sections []map[string]json.RawMessage `json:"sections"`
+		Items    json.RawMessage              `json:"items"`
 	}
 	if err := json.Unmarshal(savedBody, &saved); err != nil {
 		t.Fatalf("unmarshal saved body: %v", err)
 	}
-
-	if len(saved.Sections) != 3 {
-		t.Fatalf("expected 3 sections, got %d", len(saved.Sections))
+	if saved.ID != "board-1" {
+		t.Errorf("id = %q", saved.ID)
 	}
-
-	// Category section must have "collapsed"
-	if _, ok := saved.Sections[0]["collapsed"]; !ok {
-		t.Error("category section missing 'collapsed' field")
+	if string(saved.Items) != "[]" {
+		t.Errorf("items = %s, want [] (homarr requires an array)", saved.Items)
 	}
-
-	// Dynamic section must have "options" and "layouts"
-	if _, ok := saved.Sections[2]["options"]; !ok {
-		t.Error("dynamic section missing 'options' field")
+	if len(saved.Sections) != 2 {
+		t.Fatalf("expected 2 sections, got %d", len(saved.Sections))
 	}
-	if _, ok := saved.Sections[2]["layouts"]; !ok {
-		t.Error("dynamic section missing 'layouts' field")
+	for _, s := range saved.Sections {
+		kind := string(s["kind"])
+		if kind != `"empty"` && kind != `"container"` {
+			t.Errorf("section kind %s is not accepted by homarr v2.12.0", kind)
+		}
+	}
+	root, container := saved.Sections[0], saved.Sections[1]
+	if string(root["xOffset"]) != "0" || string(root["yOffset"]) != "0" {
+		t.Errorf("empty section offsets = %s/%s", root["xOffset"], root["yOffset"])
+	}
+	var layouts []map[string]any
+	if err := json.Unmarshal(container["layouts"], &layouts); err != nil || len(layouts) != 2 {
+		t.Fatalf("container layouts = %s (err %v)", container["layouts"], err)
+	}
+	if layouts[0]["parentSectionId"] != "root" {
+		t.Errorf("container layout parentSectionId = %v, want root", layouts[0]["parentSectionId"])
+	}
+	var opts map[string]any
+	if err := json.Unmarshal(container["options"], &opts); err != nil || opts["title"] != "Infra" {
+		t.Errorf("container options = %s", container["options"])
 	}
 }
